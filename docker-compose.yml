@@ -1,0 +1,43 @@
+version: '3.7'
+
+services:
+  generator-service:
+    container_name: generator-service
+    hostname: generator-service
+    build:
+      context: ./
+      dockerfile: src/main/scala/generator_service/Dockerfile
+    depends_on:
+      - kafka-broker
+    environment:
+      - KFTI_INPUT_FILE_NAME=data/RC_2010-12
+      - KFTI_KAFKA_BROKER_ADDRESS=kafka-broker:9092
+    volumes:
+      - ./data:/data
+
+  processor-service:
+    build:
+      context: ./
+      dockerfile: src/main/scala/processor_service/Dockerfile
+    depends_on:
+      - kafka-broker
+      - mongo
+    environment:
+      - KFTI_MONGO_URI=mongodb://mongo:27017
+      - KFTI_KAFKA_BROKER_ADDRESS=kafka-broker:9092
+
+  statistics-service:
+    container_name: statistics-service
+    hostname: statistics-service
+    build:
+      context: ./
+      dockerfile: src/main/scala/statistics_service/Dockerfile
+    depends_on:
+      - kafka-broker
+      - mongo
+    ports:
+      - 1234:1234
+    environment:
+      - KFTI_MONGO_URI=mongodb://mongo:27017
+      - KFTI_STATISTICS_HOST=0.0.0.0
+      - KFTI_STATISTICS_PORT=1234

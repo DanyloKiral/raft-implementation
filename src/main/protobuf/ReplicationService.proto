@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+service ReplicationService {
+  rpc AppendEntries(EntryData) returns (ReplicationResult) {}
+}
+
+message EntryData {
+  int64 term = 1;
+  int32 leaderId = 2;
+  int64 prevLogIndex = 3;
+  int64 prevLogTerm = 4;
+  repeated string entries = 5;
+  int64 leaderCommit = 6;
+}
+
+message ReplicationResult {
+  int64 term = 1;
+  bool success = 2;
+}
