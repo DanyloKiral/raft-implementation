@@ -1,6 +1,8 @@
 syntax = "proto3";
 
-service ReplicationService {
+package grpc.replication;
+
+service Replication {
   rpc AppendEntries(EntryData) returns (ReplicationResult) {}
 }
 

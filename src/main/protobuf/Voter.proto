@@ -1,6 +1,8 @@
 syntax = "proto3";
 
-service ElectionService {
+package grpc.election;
+
+service Voter {
   rpc RequestVote(CandidateData) returns (Vote) {}
 }
 

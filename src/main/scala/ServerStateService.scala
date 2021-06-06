@@ -1,8 +1,7 @@
-package services
-
-import models.ServerState._
+import models.ServerState.{Candidate, Follower, Leader, ServerState}
 
 object ServerStateService {
+  private var CurrentTerm = 0L
   private var State: ServerState = Follower
 
   def becomeCandidate(): Unit =
