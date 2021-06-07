@@ -14,9 +14,10 @@ import zio.console._
 //import scalapb.zio_grpc.ZManagedChannel
 
 object VoterHandler {
-  type VoterHandler = Has[Voter]
+  type VoterHandlerEnv = Has[Voter]
 
   class VoterHandlerImplementation(clock: Clock.Service) extends Voter {
+    println("Starting Voter...")
     //  val channel = ZManagedChannel(ManagedChannelBuilder
     //    .forAddress("localhost", 8980))
     //
@@ -29,6 +30,6 @@ object VoterHandler {
     }
   }
 
-  val live: ZLayer[Clock, Nothing, VoterHandler] =
+  val live: ZLayer[Clock, Nothing, VoterHandlerEnv] =
     ZLayer.fromService(new VoterHandlerImplementation(_))
 }

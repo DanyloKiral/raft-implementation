@@ -5,6 +5,7 @@ version := "0.1"
 scalaVersion := "2.13.6"
 
 assemblyMergeStrategy in assembly := {
+  case x if x.contains("io.netty.versions.properties") => MergeStrategy.discard
   case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
   case PathList("reference.conf") => MergeStrategy.concat
   case _ => MergeStrategy.first
