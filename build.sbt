@@ -5,20 +5,24 @@ version := "0.1"
 scalaVersion := "2.13.6"
 
 assemblyMergeStrategy in assembly := {
-  case x if x.contains("io.netty.versions.properties") => MergeStrategy.discard
   case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
   case PathList("reference.conf") => MergeStrategy.concat
   case _ => MergeStrategy.first
 }
 
-libraryDependencies += "dev.zio" %% "zio" % "1.0.9"
+enablePlugins(AkkaGrpcPlugin)
 
-PB.targets in Compile := Seq(
-  scalapb.gen(grpc = true) -> (sourceManaged in Compile).value / "scalapb",
-  scalapb.zio_grpc.ZioCodeGenerator -> (sourceManaged in Compile).value / "scalapb"
-)
+libraryDependencies += "org.json4s" %% "json4s-jackson" % "3.6.9"
+libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.1.3" % Runtime
 
+val AkkaVersion = "2.6.15"
+val AkkaHttpVersion = "10.2.2"
 libraryDependencies ++= Seq(
-  "io.grpc" % "grpc-netty" % "1.38.0",
-  "com.thesamet.scalapb" %% "scalapb-runtime-grpc" % scalapb.compiler.Version.scalapbVersion
+  "com.typesafe.akka" %% "akka-actor-typed" % AkkaVersion,
+  "com.typesafe.akka" %% "akka-http" % AkkaHttpVersion,
+  "com.typesafe.akka" %% "akka-slf4j" % AkkaVersion,
+  "com.typesafe.akka" %% "akka-serialization-jackson" % AkkaVersion,
+  "com.typesafe.akka" %% "akka-discovery" % AkkaVersion,
+  "com.typesafe.akka" %% "akka-protobuf-v3" % AkkaVersion,
+  "com.typesafe.akka" %% "akka-stream" % AkkaVersion
 )

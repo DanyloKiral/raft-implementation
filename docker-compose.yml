@@ -1,13 +1,44 @@
 version: '3.7'
 
 services:
-  raft-server:
-    container_name: raft-server
-    hostname: raft-server
+  raft-server1:
+    container_name: raft-server1
+    hostname: raft-server1
     build:
       context: ./
       dockerfile: ./Dockerfile
     environment:
-      - KFTI_INPUT_FILE_NAME=data/RC_2010-12
-    volumes:
-      - ./data:/data
+      - SERVER_ID=raft-server1
+      - GRPC_PORT=5051
+      - SERVERS_INFO_JSON=[]
+      - ELECTION_TIMEOUT_FROM_MS=10000
+      - ELECTION_TIMEOUT_TO_MS=15000
+      - HEARTBEAT_INTERVAL_MS=1000
+
+  raft-server2:
+    container_name: raft-server2
+    hostname: raft-server2
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+    environment:
+      - SERVER_ID=raft-server2
+      - GRPC_PORT=5051
+      - SERVERS_INFO_JSON=[]
+      - ELECTION_TIMEOUT_FROM_MS=10000
+      - ELECTION_TIMEOUT_TO_MS=15000
+      - HEARTBEAT_INTERVAL_MS=1000
+
+  raft-server3:
+    container_name: raft-server3
+    hostname: raft-server3
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+    environment:
+      - SERVER_ID=raft-server3
+      - GRPC_PORT=5051
+      - SERVERS_INFO_JSON=[]
+      - ELECTION_TIMEOUT_FROM_MS=10000
+      - ELECTION_TIMEOUT_TO_MS=15000
+      - HEARTBEAT_INTERVAL_MS=1000

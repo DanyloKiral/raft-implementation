@@ -1,26 +1,34 @@
 package replication
 
-import grpc.election.Voter.{CandidateData, Vote}
-import grpc.election.Voter.ZioVoter.Voter
-import grpc.replication.Replication.ZioReplication.Replication
-import grpc.replication.Replication.{EntryData, ReplicationResult}
-import io.grpc.Status
-import zio.{Has, ZIO, ZLayer}
-import zio.clock.Clock
-import zio.console.putStrLn
+import election.ElectionService
+import grpc.replication.{EntryData, Replication, ReplicationResult}
+import org.slf4j.Logger
+import shared.ServerStateService
 
-object ReplicationReceiver {
-  type ReplicationReceiverEnv = Has[Replication]
+import scala.concurrent.Future
 
-  class ReplicationReceiverImplementation(clock: Clock.Service) extends Replication {
-    println("Starting Replication...")
+class ReplicationReceiver (electionService: ElectionService) (implicit logger: Logger) extends Replication {
+  logger.info("Starting Replication receiver...")
 
-    override def appendEntries(request: EntryData): ZIO[Any, Status, ReplicationResult] = {
-      ZIO.succeed(ReplicationResult(1, true))
+  override def appendEntries(in: EntryData): Future[ReplicationResult] = {
+    logger.info(s"Received AppendEntries from ${in.leaderId}")
+
+    if (in.term < ServerStateService.getCurrentTerm) {
+      return Future.successful(ReplicationResult(ServerStateService.getCurrentTerm, false))
     }
+
+    if (in.term > ServerStateService.getCurrentTerm) {
+      ServerStateService.increaseTerm(in.term)
+      electionService.stepDown
+      // todo: handle other cases
+    }
+
+    electionService.resetElectionTimeout()
+
+    if (in.entries.nonEmpty) {
+      // todo: handle adding new entries
+    }
+
+    Future.successful(ReplicationResult(ServerStateService.getCurrentTerm, true))
   }
-
-  val live: ZLayer[Clock, Nothing, ReplicationReceiverEnv] =
-      ZLayer.fromService(new ReplicationReceiverImplementation(_))
 }
-
