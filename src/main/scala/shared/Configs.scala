@@ -12,6 +12,7 @@ object Configs {
   val ServerID = Properties.envOrElse("SERVER_ID", "raft-server")
 
   val GrpcPort = Properties.envOrElse("GRPC_PORT", "5051").toInt
+  val ExposedHttpPort = Properties.envOrElse("EXPOSED_HTTP_PORT", "6050").toInt
 
   // all servers, including this
   private val envServersInfo = parse(Properties.envOrElse("SERVERS_INFO_JSON", "[]")).extract[Array[ServerInfo]]

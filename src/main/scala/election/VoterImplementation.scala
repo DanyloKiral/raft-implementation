@@ -24,7 +24,7 @@ class VoterImplementation (electionService: ElectionService) (implicit logger: L
         case term if term > ServerStateService.getCurrentTerm => {
           logger.info(s"Received RequestVote from ${in.candidateId}")
           ServerStateService.increaseTerm(term)
-          electionService.stepDown
+          electionService.stepDownIfNeeded
           vote(in)
         }
         case term if term < ServerStateService.getCurrentTerm => {
@@ -37,6 +37,8 @@ class VoterImplementation (electionService: ElectionService) (implicit logger: L
   private def vote(in: CandidateData) = {
     // todo: apply log check for election
     logger.info(s"Voting for ${in.candidateId}")
+
+    ServerStateService.voteFor(in.candidateId)
     Future.successful(Vote(ServerStateService.getCurrentTerm, true))
   }
 }

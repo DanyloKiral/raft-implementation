@@ -24,5 +24,9 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-serialization-jackson" % AkkaVersion,
   "com.typesafe.akka" %% "akka-discovery" % AkkaVersion,
   "com.typesafe.akka" %% "akka-protobuf-v3" % AkkaVersion,
-  "com.typesafe.akka" %% "akka-stream" % AkkaVersion
+  "com.typesafe.akka" %% "akka-stream" % AkkaVersion,
+  "com.typesafe.akka" %% "akka-http-spray-json" % AkkaHttpVersion
 )
+
+libraryDependencies += "com.softwaremill.macwire" %% "macros" % "2.3.7" % "provided"
+libraryDependencies += "com.softwaremill.macwire" %% "macrosakka" % "2.3.7" % "provided"

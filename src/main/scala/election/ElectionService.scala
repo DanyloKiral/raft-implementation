@@ -9,13 +9,14 @@ import shared.{Configs, ServerStateService}
 
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 import scala.concurrent.duration._
+import com.softwaremill.macwire.akkasupport._
 import scala.util.{Failure, Success}
 
 class ElectionService (replicationSender: ReplicationSender)
                       (implicit system: ActorSystem,
                        executionContext: ExecutionContextExecutor,
                        logger: Logger) {
-  private val voterClients = Configs.ServersInfo
+  private lazy val voterClients = Configs.ServersInfo
       .filter(_.id != ServerStateService.ServerID)
       .map(i => GrpcClientSettings.connectToServiceAt(i.address, i.port).withTls(false))
       .map(VoterClient(_))
@@ -34,9 +35,12 @@ class ElectionService (replicationSender: ReplicationSender)
   }
 
   // should be idempotent
-  def stepDown() = {
-    logger.info("Step down")
-    ServerStateService.becomeFollower
+  def stepDownIfNeeded() = {
+    if (!ServerStateService.isFollower) {
+      logger.info("Step down")
+      ServerStateService.becomeFollower
+    }
+
     resetElectionTimeout
     // todo: cancel election
   // todo: implement
@@ -68,7 +72,7 @@ class ElectionService (replicationSender: ReplicationSender)
       case Success(value) => {
         if (value.term > ServerStateService.getCurrentTerm) {
           ServerStateService.increaseTerm(value.term)
-          stepDown
+          stepDownIfNeeded
           collectedVotes = 0
         } else if (value.voteGranted && !wonElection) {
           collectedVotes += 1

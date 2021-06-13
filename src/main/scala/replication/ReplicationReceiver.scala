@@ -19,11 +19,10 @@ class ReplicationReceiver (electionService: ElectionService) (implicit logger: L
 
     if (in.term > ServerStateService.getCurrentTerm) {
       ServerStateService.increaseTerm(in.term)
-      electionService.stepDown
+
       // todo: handle other cases
     }
-
-    electionService.resetElectionTimeout()
+    electionService.stepDownIfNeeded
 
     if (in.entries.nonEmpty) {
       // todo: handle adding new entries

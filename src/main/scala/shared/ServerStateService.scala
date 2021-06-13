@@ -15,7 +15,7 @@ object ServerStateService {
 
   def becomeCandidate() (implicit logger: Logger): Unit = {
     logger.info("Becoming a Candidate")
-    CurrentTerm += 1
+    increaseTerm(CurrentTerm + 1)
     State = Candidate
   }
 
@@ -33,6 +33,7 @@ object ServerStateService {
   }
 
   def isFollower(): Boolean = State == Follower
+  def isLeader(): Boolean = State == Leader
 
   // terms
 

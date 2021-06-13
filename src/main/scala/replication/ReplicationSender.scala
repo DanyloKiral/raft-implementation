@@ -12,15 +12,15 @@ import scala.concurrent.duration._
 import scala.concurrent.ExecutionContextExecutor
 
 class ReplicationSender (implicit system: ActorSystem, executionContext: ExecutionContextExecutor, logger: Logger) {
-  private val receiverClients = Configs.ServersInfo
+  private lazy val receiverClients = Configs.ServersInfo
       .filter(_.id != ServerStateService.ServerID)
-      .map(i => GrpcClientSettings.connectToServiceAt(i.address, i.port).withTls(false))
-      .map(ReplicationClient(_))
+      .map(i => i.id -> ReplicationClient(GrpcClientSettings.connectToServiceAt(i.address, i.port).withTls(false)))
+      .toMap
 
   private val electorActor = system.actorOf(Props[HeartbeatSender](new HeartbeatSender(this)))
   private var heartbeatIntervalScheduler: Option[Cancellable] = Option.empty
 
-  def sendLogEntries(entries: Seq[LogEntry]) = {
+  def replicateLogEntriesToAll(entries: Seq[LogEntry]) = {
     if (entries.nonEmpty) {
       // when log sent
       resetHeartbeatInterval()
@@ -28,8 +28,14 @@ class ReplicationSender (implicit system: ActorSystem, executionContext: Executi
 
     // todo: fill log fields
     val data = EntryData(ServerStateService.getCurrentTerm, ServerStateService.ServerID, 0, 0, entries, 0)
-    receiverClients.map(_.appendEntries(data))
+    receiverClients.map(c => c._1 -> c._2.appendEntries(data))
     // todo: handle responses from followers to commit?
+  }
+
+  def replicateLogEntriesTo(entries: Seq[LogEntry], followerId: String) = {
+    // todo: consider resetting heartbeat interval for separate node
+    val data = EntryData(ServerStateService.getCurrentTerm, ServerStateService.ServerID, 0, 0, entries, 0)
+    receiverClients(followerId).appendEntries(data)
   }
 
   def resetHeartbeatInterval(newLeader: Boolean = false) = {
@@ -50,7 +56,7 @@ class ReplicationSender (implicit system: ActorSystem, executionContext: Executi
 
   private class HeartbeatSender (val replicationSender: ReplicationSender) extends Actor {
     override def receive: Receive = {
-      case _ => replicationSender.sendLogEntries(Seq())
+      case _ => replicationSender.replicateLogEntriesToAll(Seq())
     }
   }
 }

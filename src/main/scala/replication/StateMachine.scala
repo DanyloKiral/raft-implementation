@@ -1,0 +1,5 @@
+package replication
+
+class StateMachine {
+
+}
