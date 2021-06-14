@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import models.Log
 import org.slf4j.Logger
-import shared.{Configs, ServerStateService}
+import shared.{Configs, ServerState}
 import akka.http.scaladsl.server.Directives._
 import akka.stream.{FlowShape, Graph}
 import akka.stream.scaladsl.{Balance, Broadcast, BroadcastHub, Flow, GraphDSL, Keep, Merge, RetryFlow, Sink, Source}
@@ -23,20 +23,19 @@ import scala.concurrent.duration._
 class LogService (replicationSender: ReplicationSender, logState: LogState)
                  (implicit executionContext: ExecutionContext, logger: Logger, system: ActorSystem) {
   private val mapper: ObjectMapper = new ObjectMapper().registerModule(DefaultScalaModule)
-
   private val LogProcessingGraph = formatLogProcessingGraph
 
   def handleLogFromClient(log: Log): Future[HttpResponse] = {
-    if (ServerStateService.isLeader()) {
+    if (ServerState.isLeader()) {
       // todo: send leader url?
       return Future.successful(httpResponse(StatusCodes.MisdirectedRequest))
     }
 
     // todo: save next index
-    val data = LogEntry(ServerStateService.getCurrentTerm, 1, log.command)
+    val data = LogEntry(ServerState.getCurrentTerm, 1, log.command)
 
-    logState.appendLog(data)
-    
+    val currentLogIndex = logState.appendLog(data)
+
     val replicationHandlerSource = Source(replicationSender.getSendFunctions(log))
       .via(LogProcessingGraph)
       .toMat(BroadcastHub.sink)(Keep.right)
@@ -49,7 +48,7 @@ class LogService (replicationSender: ReplicationSender, logState: LogState)
       .map(x => {
 
         // todo: commit here
-        logger.info(s"After Grouping. Contains = $x")
+        logState.commit(currentLogIndex)
 
         httpResponse(StatusCodes.OK, "Success")
       })

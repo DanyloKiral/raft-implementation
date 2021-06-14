@@ -3,7 +3,7 @@ package replication
 import election.ElectionService
 import grpc.replication.{EntryData, Replication, ReplicationResult}
 import org.slf4j.Logger
-import shared.ServerStateService
+import shared.ServerState
 
 import scala.concurrent.Future
 
@@ -13,20 +13,13 @@ class ReplicationReceiver (electionService: ElectionService) (implicit logger: L
   override def appendEntries(in: EntryData): Future[ReplicationResult] = {
     logger.info(s"Received AppendEntries from ${in.leaderId}")
 
-    if (ServerStateService.ServerID == "raft-server2") {
-      logger.info(s"Replication failing")
-      return Future.successful(ReplicationResult(ServerStateService.getCurrentTerm, false))
-    }
-    logger.info(s"Replication successful")
-    return Future.successful(ReplicationResult(ServerStateService.getCurrentTerm, true))
-
-    if (in.term < ServerStateService.getCurrentTerm) {
+    if (in.term < ServerState.getCurrentTerm) {
       logger.info(s"Rejecting because I am the leader")
-      return Future.successful(ReplicationResult(ServerStateService.getCurrentTerm, false))
+      return Future.successful(ReplicationResult(ServerState.getCurrentTerm, false))
     }
 
-    if (in.term > ServerStateService.getCurrentTerm) {
-      ServerStateService.increaseTerm(in.term)
+    if (in.term > ServerState.getCurrentTerm) {
+      ServerState.increaseTerm(in.term)
 
       // todo: handle other cases
     }
@@ -36,6 +29,6 @@ class ReplicationReceiver (electionService: ElectionService) (implicit logger: L
       // todo: handle adding new entries
     }
 
-    Future.successful(ReplicationResult(ServerStateService.getCurrentTerm, true))
+    Future.successful(ReplicationResult(ServerState.getCurrentTerm, true))
   }
 }

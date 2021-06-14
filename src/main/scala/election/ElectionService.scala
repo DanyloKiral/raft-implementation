@@ -5,7 +5,7 @@ import akka.grpc.GrpcClientSettings
 import grpc.election.{CandidateData, Vote, Voter, VoterClient}
 import org.slf4j.Logger
 import replication.ReplicationSender
-import shared.{Configs, ServerStateService}
+import shared.{Configs, ServerState}
 
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 import scala.concurrent.duration._
@@ -17,7 +17,7 @@ class ElectionService (replicationSender: ReplicationSender)
                        executionContext: ExecutionContextExecutor,
                        logger: Logger) {
   private lazy val voterClients = Configs.ServersInfo
-      .filter(_.id != ServerStateService.ServerID)
+      .filter(_.id != ServerState.ServerID)
       .map(i => GrpcClientSettings.connectToServiceAt(i.address, i.port).withTls(false))
       .map(VoterClient(_))
 
@@ -36,9 +36,9 @@ class ElectionService (replicationSender: ReplicationSender)
 
   // should be idempotent
   def stepDownIfNeeded() = {
-    if (!ServerStateService.isFollower) {
+    if (!ServerState.isFollower) {
       logger.info("Step down")
-      ServerStateService.becomeFollower
+      ServerState.becomeFollower
     }
 
     resetElectionTimeout
@@ -54,9 +54,9 @@ class ElectionService (replicationSender: ReplicationSender)
 
 
   private def convertToCandidate() = {
-    ServerStateService.becomeCandidate
+    ServerState.becomeCandidate
     resetElectionTimeout
-    ServerStateService.voteFor(ServerStateService.ServerID)
+    ServerState.voteFor(ServerState.ServerID)
     requestVotes
   }
 
@@ -70,8 +70,8 @@ class ElectionService (replicationSender: ReplicationSender)
 
     futures.foreach(_.onComplete {
       case Success(value) => {
-        if (value.term > ServerStateService.getCurrentTerm) {
-          ServerStateService.increaseTerm(value.term)
+        if (value.term > ServerState.getCurrentTerm) {
+          ServerState.increaseTerm(value.term)
           stepDownIfNeeded
           collectedVotes = 0
         } else if (value.voteGranted && !wonElection) {
@@ -92,14 +92,14 @@ class ElectionService (replicationSender: ReplicationSender)
   private def winElection() = {
     // todo: cancel election futures
 
-    ServerStateService.becomeLeader
+    ServerState.becomeLeader
     clearElectionTimeout
     replicationSender.resetHeartbeatInterval(true)
   }
 
   private def collectCandidateData(): CandidateData = {
     // todo: Add log data
-    CandidateData(ServerStateService.getCurrentTerm, ServerStateService.ServerID, 1, 1)
+    CandidateData(ServerState.getCurrentTerm, ServerState.ServerID, 1, 1)
   }
 
   private def clearElectionTimeout() = {

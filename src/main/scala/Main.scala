@@ -4,7 +4,7 @@ import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpRequest, HttpResponse, StatusCodes}
 import election.{ElectionService, VoterImplementation}
 import grpc.replication.{Replication, ReplicationHandler, ReplicationResult}
-import replication.{LogService, LogState, ReplicationReceiver, ReplicationSender}
+import replication.{LogService, LogState, ReplicationReceiver, ReplicationSender, StateMachine}
 import akka.grpc.scaladsl.ServiceHandler
 import akka.http.scaladsl.server.Directives._
 import akka.stream.Materializer
@@ -39,6 +39,7 @@ object Main extends App {
   lazy val electionService = wire[ElectionService]
   lazy val logState = wire[LogState]
   lazy val logService = wire[LogService]
+  lazy val stateMachine = wire[StateMachine]
 
   startGrpcServer()
   startExposedHttpServer()

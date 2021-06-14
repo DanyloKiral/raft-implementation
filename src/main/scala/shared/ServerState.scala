@@ -1,16 +1,14 @@
 package shared
 
-import models.ServerState._
+import models.ServerStateEnum._
 import org.slf4j.Logger
 
-import scala.collection.mutable
-
-object ServerStateService {
+object ServerState {
   val ServerID: String = Configs.ServerID
   // todo: set leader ID
   var CurrentLeaderId: Option[String] = Option.empty
   private var CurrentTerm = 0L
-  private var State: ServerState = Follower
+  private var State: ServerStateEnum = Follower
   private var VotedFor: Option[String] = Option.empty
 
   def becomeCandidate() (implicit logger: Logger): Unit = {
@@ -22,7 +20,6 @@ object ServerStateService {
   def becomeLeader() (implicit logger: Logger): Unit = {
     logger.info("Becoming a Leader")
     State = Leader
-
   }
 
   def becomeFollower() (implicit logger: Logger): Unit = {
@@ -57,6 +54,8 @@ object ServerStateService {
     VotedFor = Option(candidateId)
     // todo: save votes to permanent storage
   }
-
-  //
 }
+
+
+
+
