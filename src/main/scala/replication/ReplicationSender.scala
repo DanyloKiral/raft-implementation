@@ -2,34 +2,40 @@ package replication
 
 import akka.actor.{Actor, ActorSystem, Cancellable, Props}
 import akka.grpc.GrpcClientSettings
-import election.ElectionService
-import grpc.election.VoterClient
-import grpc.replication.{EntryData, LogEntry, ReplicationClient}
+import grpc.replication.{EntryData, LogEntry, ReplicationClient, ReplicationResult}
+import models.{Log, RestartReplicationError}
 import org.slf4j.Logger
 import shared.{Configs, ServerStateService}
+import spray.json.RootJsonFormat
 
 import scala.concurrent.duration._
-import scala.concurrent.ExecutionContextExecutor
+import scala.concurrent.{ExecutionContextExecutor, Future}
+import models.Types.ReplicateLogFuncData
 
-class ReplicationSender (implicit system: ActorSystem, executionContext: ExecutionContextExecutor, logger: Logger) {
-  private lazy val receiverClients = Configs.ServersInfo
+class ReplicationSender (implicit system: ActorSystem, executionContext: ExecutionContextExecutor, logger: Logger, clientJsonFormat: RootJsonFormat[Log]) {
+  private val receiverClients = Configs.ServersInfo
       .filter(_.id != ServerStateService.ServerID)
-      .map(i => i.id -> ReplicationClient(GrpcClientSettings.connectToServiceAt(i.address, i.port).withTls(false)))
+      .map(i => i.id -> ReplicationClient(GrpcClientSettings.connectToServiceAt(i.address, i.port)
+                          .withTls(false)
+                          .withConnectionAttempts(-1)))
       .toMap
 
   private val electorActor = system.actorOf(Props[HeartbeatSender](new HeartbeatSender(this)))
   private var heartbeatIntervalScheduler: Option[Cancellable] = Option.empty
 
-  def replicateLogEntriesToAll(entries: Seq[LogEntry]) = {
-    if (entries.nonEmpty) {
-      // when log sent
-      resetHeartbeatInterval()
-    }
+  def getSendFunctions(log: Log): List[ReplicateLogFuncData] =
+    receiverClients.toList
+      .map((_, logToEntryData(log)))
+      .map(data => (data._2, (entry: EntryData) => {
+        Future.successful(data._1._1).zip(data._1._2.appendEntries(entry))
+      }))
 
-    // todo: fill log fields
-    val data = EntryData(ServerStateService.getCurrentTerm, ServerStateService.ServerID, 0, 0, entries, 0)
-    receiverClients.map(c => c._1 -> c._2.appendEntries(data))
-    // todo: handle responses from followers to commit?
+  def logToEntryData(log: Log) =
+    EntryData(ServerStateService.getCurrentTerm, ServerStateService.ServerID, 0, 0, Seq(LogEntry(ServerStateService.getCurrentTerm, 1, log.command)), 0)
+
+  def sendHeartbeats() = {
+    val data = EntryData(ServerStateService.getCurrentTerm, ServerStateService.ServerID, 0, 0, Seq(), 0)
+    receiverClients.map(c => c._2.appendEntries(data).zip(Future.successful(c._1))).toArray
   }
 
   def replicateLogEntriesTo(entries: Seq[LogEntry], followerId: String) = {
@@ -56,7 +62,7 @@ class ReplicationSender (implicit system: ActorSystem, executionContext: Executi
 
   private class HeartbeatSender (val replicationSender: ReplicationSender) extends Actor {
     override def receive: Receive = {
-      case _ => replicationSender.replicateLogEntriesToAll(Seq())
+      case _ => replicationSender.sendHeartbeats
     }
   }
 }

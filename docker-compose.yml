@@ -7,10 +7,12 @@ services:
     build:
       context: ./
       dockerfile: ./Dockerfile
+    ports:
+      - 6051:6050
     environment:
       - SERVER_ID=raft-server1
       - GRPC_PORT=5051
-      - EXPOSED_HTTP_PORT=6051
+      - EXPOSED_HTTP_PORT=6050
       - SERVERS_INFO_JSON=[]
       - ELECTION_TIMEOUT_FROM_MS=10000
       - ELECTION_TIMEOUT_TO_MS=15000
@@ -22,10 +24,12 @@ services:
     build:
       context: ./
       dockerfile: ./Dockerfile
+    ports:
+      - 6052:6050
     environment:
       - SERVER_ID=raft-server2
       - GRPC_PORT=5051
-      - EXPOSED_HTTP_PORT=6051
+      - EXPOSED_HTTP_PORT=6050
       - SERVERS_INFO_JSON=[]
       - ELECTION_TIMEOUT_FROM_MS=10000
       - ELECTION_TIMEOUT_TO_MS=15000
@@ -37,10 +41,12 @@ services:
     build:
       context: ./
       dockerfile: ./Dockerfile
+    ports:
+      - 6053:6050
     environment:
       - SERVER_ID=raft-server3
       - GRPC_PORT=5051
-      - EXPOSED_HTTP_PORT=6051
+      - EXPOSED_HTTP_PORT=6050
       - SERVERS_INFO_JSON=[]
       - ELECTION_TIMEOUT_FROM_MS=10000
       - ELECTION_TIMEOUT_TO_MS=15000

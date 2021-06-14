@@ -1,13 +1,14 @@
+import akka.Done
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpRequest, HttpResponse, StatusCodes}
 import election.{ElectionService, VoterImplementation}
-import grpc.replication.{Replication, ReplicationHandler}
+import grpc.replication.{Replication, ReplicationHandler, ReplicationResult}
 import replication.{LogService, LogState, ReplicationReceiver, ReplicationSender}
 import akka.grpc.scaladsl.ServiceHandler
 import akka.http.scaladsl.server.Directives._
 import akka.stream.Materializer
-import akka.stream.scaladsl.Source
+import akka.stream.scaladsl.{Flow, RunnableGraph, Sink, Source}
 import com.typesafe.config.ConfigFactory
 import grpc.election.VoterHandler
 import models.Log
@@ -20,6 +21,7 @@ import scala.concurrent.duration._
 import scala.util.{Failure, Success}
 import com.softwaremill.macwire._
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
+import akka.http.scaladsl.marshalling.{Marshaller, ToResponseMarshaller}
 import spray.json.RootJsonFormat
 import spray.json.DefaultJsonProtocol._
 
@@ -37,7 +39,6 @@ object Main extends App {
   lazy val electionService = wire[ElectionService]
   lazy val logState = wire[LogState]
   lazy val logService = wire[LogService]
-
 
   startGrpcServer()
   startExposedHttpServer()
@@ -86,7 +87,11 @@ object Main extends App {
           },
           post {
             path("command") {
-              entity(as[Log])(logService.receiveLogFromClient(_))
+              entity(as[Log]) { log =>
+                complete {
+                  logService.handleLogFromClient(log)
+                }
+              }
             }
           }
         )
