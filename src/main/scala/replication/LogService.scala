@@ -12,15 +12,16 @@ import akka.http.scaladsl.server.Directives._
 import akka.stream.{FlowShape, Graph}
 import akka.stream.scaladsl.{Balance, Broadcast, BroadcastHub, Flow, GraphDSL, Keep, Merge, RetryFlow, Sink, Source}
 import grpc.replication.{LogEntry, ReplicationResult}
-import models.Types.ReplicateLogFuncData
+import models.Types.{ReplicateLogFuncData, ReplicationResponse}
 import GraphDSL.Implicits._
 import akka.NotUsed
+import election.ElectionService
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 import scala.concurrent.duration._
 
-class LogService (replicationSender: ReplicationSender, logState: LogState)
+class LogService (replicationSender: ReplicationSender, electionService: ElectionService, logState: LogState)
                  (implicit executionContext: ExecutionContext, logger: Logger, system: ActorSystem) {
   private val mapper: ObjectMapper = new ObjectMapper().registerModule(DefaultScalaModule)
   private val LogProcessingGraph = formatLogProcessingGraph
@@ -31,15 +32,16 @@ class LogService (replicationSender: ReplicationSender, logState: LogState)
       return Future.successful(httpResponse(StatusCodes.MisdirectedRequest))
     }
 
-    // todo: save next index
-    val data = LogEntry(ServerState.getCurrentTerm, 1, log.command)
+    // todo: next index?
+    val entry = LogEntry(ServerState.getCurrentTerm, 1, log.command)
 
-    val currentLogIndex = logState.appendLog(data)
+    val currentLogIndex = logState.appendLog(entry)
 
-    val replicationHandlerSource = Source(replicationSender.getSendFunctions(log))
-      .via(LogProcessingGraph)
-      .toMat(BroadcastHub.sink)(Keep.right)
-      .run
+    val replicationHandlerSource =
+      Source(replicationSender.getSendFunctions(entry))
+        .via(LogProcessingGraph)
+        .toMat(BroadcastHub.sink)(Keep.right)
+        .run
 
     replicationSender.resetHeartbeatInterval()
 
@@ -55,29 +57,50 @@ class LogService (replicationSender: ReplicationSender, logState: LogState)
       .runWith(Sink.head)
   }
 
-  private def formatLogProcessingGraph(): Graph[FlowShape[ReplicateLogFuncData, (String, ReplicationResult)], NotUsed] = {
+  private def formatLogProcessingGraph(): Graph[FlowShape[ReplicateLogFuncData, ReplicationResponse], NotUsed] = {
     val flowToRetry = Flow[ReplicateLogFuncData]
       .mapAsyncUnordered(1)(action => action._2(action._1))
 
     // todo: change retry interval
-    val retryFlow = RetryFlow.withBackoff(5.seconds, 10.seconds, 1, -1, flowToRetry)((i, o) => {
-      logger.info(s"Checking retry condition for ${o._1}; current result = ${o._2}")
+    val retryFlow = RetryFlow.withBackoff(5.seconds, 10.seconds, 1, -1, flowToRetry)((i, o) =>
+      o._2 match {
+          // if follower has outdated log - need to retry
+        case Some(result)
+          if ServerState.isLeader && !result.success && result.term == ServerState.getCurrentTerm => {
 
-      // todo: change logs (indexes) for outdated follower
-      if (o._2.success) None else Some(i)
-    })
+          val newPrevIndex = i._1.prevLogIndex - 1
+          val entries = logState.getEntryFromIndex(newPrevIndex)
+          val newPrevTerm = entries.last.term
 
-    val processReplicationResultSink = Sink.foreach((result: (String, ReplicationResult)) => {
-      logger.info(s"processResultsSink. data = $result")
-    })
+          val newEntryData = replicationSender.logToEntryData(
+            entries.dropRight(1),
+            Some(newPrevIndex),
+            Some(newPrevTerm)
+          )
 
-    GraphDSL.create[FlowShape[ReplicateLogFuncData, (String, ReplicationResult)]]() { implicit graphBuilder =>
+          Some((newEntryData, i._2))
+        }
+          // retry if no response
+        case None if ServerState.isLeader => Some(i)
+        case _ => None
+      })
+
+    val processReplicationResultSink = Sink.foreach((data: ReplicationResponse) =>
+      data._2 match {
+        case Some(result) if !result.success && result.term > ServerState.getCurrentTerm => {
+          ServerState.increaseTerm(result.term)
+          electionService.stepDownIfNeeded()
+        }
+        case _ => {}
+      })
+
+    GraphDSL.create[FlowShape[ReplicateLogFuncData, ReplicationResponse]]() { implicit graphBuilder =>
       val IN = graphBuilder.add(Broadcast[ReplicateLogFuncData](1))
-      val PROCESS_REPLICATION = graphBuilder.add(Broadcast[(String, ReplicationResult)](2))
+      val PROCESS_REPLICATION = graphBuilder.add(Broadcast[ReplicationResponse](2))
       val parallelNo = Configs.ServersInfo.size - 1
       val BALANCE = graphBuilder.add(Balance[ReplicateLogFuncData](parallelNo))
-      val MERGE = graphBuilder.add(Merge[(String, ReplicationResult)](parallelNo))
-      val OUT = graphBuilder.add(Merge[(String, ReplicationResult)](1))
+      val MERGE = graphBuilder.add(Merge[ReplicationResponse](parallelNo))
+      val OUT = graphBuilder.add(Merge[ReplicationResponse](1))
 
       IN ~> BALANCE.in
 
