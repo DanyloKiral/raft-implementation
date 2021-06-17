@@ -10,6 +10,7 @@ import shared.{Configs, ServerState}
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 import scala.concurrent.duration._
 import com.softwaremill.macwire.akkasupport._
+import grpc.replication.{EntryData, LogEntry}
 
 import scala.util.{Failure, Success}
 
@@ -45,8 +46,6 @@ class ElectionService (replicationSender: ReplicationSender,
     }
 
     resetElectionTimeout
-    // todo: cancel election
-  // todo: implement
   }
 
   def close() = {
@@ -93,8 +92,6 @@ class ElectionService (replicationSender: ReplicationSender,
   }
 
   private def winElection() = {
-    // todo: cancel election futures
-
     serverState.becomeLeader
     logState.initLeaderState
     clearElectionTimeout
@@ -102,8 +99,13 @@ class ElectionService (replicationSender: ReplicationSender,
   }
 
   private def collectCandidateData(): CandidateData = {
-    // todo: Add log data
-    CandidateData(serverState.getCurrentTerm, serverState.ServerID, 1, 1)
+    val lastLog = logState.getLastLog.getOrElse(LogEntry(0, 0))
+
+    CandidateData(
+      serverState.getCurrentTerm,
+      serverState.ServerID,
+      lastLog.index,
+      lastLog.term)
   }
 
   private def clearElectionTimeout() = {

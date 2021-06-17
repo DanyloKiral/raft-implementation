@@ -4,7 +4,8 @@ import grpc.replication.{EntryData, ReplicationResult}
 
 import scala.concurrent.Future
 
+object Types {
+  type ReplicationFunc = () => Future[ReplicationResponse]
+}
 
-case class ReplicateLogFuncData (entryData: EntryData, replicationFunc: EntryData => Future[ReplicationResponse])
-
-case class ReplicationResponse(followerId: String, entryData: EntryData, replicationResult: Option[ReplicationResult])
+case class ReplicationResponse(followerId: String, replicationResult: Option[ReplicationResult])

@@ -3,14 +3,14 @@ package replication
 import akka.actor.{Actor, ActorSystem, Cancellable, Props}
 import akka.grpc.GrpcClientSettings
 import grpc.replication.{EntryData, LogEntry, ReplicationClient, ReplicationResult}
-import models.{Log, ReplicateLogFuncData, ReplicationResponse}
+import models.Types.ReplicationFunc
+import models.{Log, ReplicationResponse}
 import org.slf4j.Logger
 import shared.{Configs, ServerState}
 import spray.json.RootJsonFormat
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContextExecutor, Future}
-
 import scala.util.{Either, Failure, Success, Try}
 
 class ReplicationSender (serverState: ServerState, logState: LogState)
@@ -25,29 +25,34 @@ class ReplicationSender (serverState: ServerState, logState: LogState)
   private val electorActor = system.actorOf(Props[HeartbeatSender](new HeartbeatSender(this)))
   private var heartbeatIntervalScheduler: Option[Cancellable] = Option.empty
 
-  def getSendFunctions(entry: LogEntry): List[ReplicateLogFuncData] =
+  def getSendFunctions(): List[ReplicationFunc] =
     receiverClients.toList
-      .map((_, logToEntryData(Seq(entry))))
-      .map(data => ReplicateLogFuncData(data._2, (entry: EntryData) =>
-        sendAppendEntryToClient(data._1._2, entry).transform { value =>
-          Try(ReplicationResponse(data._1._1, data._2, value.get))
-        }))
+      .map(followerData => () =>
+        sendAppendEntryToClient(followerData._2, getEntryData(followerData._1)).transform { value =>
+          Try(ReplicationResponse(followerData._1, value.get))
+        })
 
-  def logToEntryData(logs: Seq[LogEntry], prevEntryIndex: Option[Long] = None, prevEntryTerm: Option[Long] = None) = {
-    // todo: check if default values are correct
-    val prevEntry = logState.getLastEntry.getOrElse(LogEntry(0, 0))
+  def getEntryData(followerId: String) = {
+    val followerNextIndex = logState.getNextIndexForFollower(followerId)
+
+    logger.info(s"Sending log to follower $followerId from index = $followerNextIndex")
+
+    val prevEntry = if (followerNextIndex > 1)
+      logState.getEntryByIndex(followerNextIndex - 1) else
+      LogEntry(0, 0)
 
     EntryData(
       serverState.getCurrentTerm,
       serverState.ServerID,
-      prevEntryIndex.getOrElse(prevEntry.index),
-      prevEntryTerm.getOrElse(prevEntry.term),
-      logs,
+      prevEntry.index,
+      prevEntry.term,
+      logState.getEntryFromIndex(followerNextIndex),
       logState.getCommitIndex)
   }
 
   def sendHeartbeats() = {
-    val data = EntryData(serverState.getCurrentTerm, serverState.ServerID, 0, 0, Seq(), 0)
+    // todo: compose EntryData the same way as for replication?
+    val data = EntryData(serverState.getCurrentTerm, serverState.ServerID, 0, 0, Seq(), logState.getCommitIndex)
     receiverClients.map(c => sendAppendEntryToClient(c._2, data))
   }
 
@@ -77,7 +82,6 @@ class ReplicationSender (serverState: ServerState, logState: LogState)
     replicationClient.appendEntries(entryData).transform{
       case Success(result) => Try(Some(result))
       case Failure(exception) => {
-        // todo: handle exceptions by type
         logger.error("Error sending AppendEntry to followers", exception)
         Try(None)
       }

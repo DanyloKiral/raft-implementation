@@ -30,14 +30,14 @@ object Configs {
 
   val ClusterQuorumNumber = (ServersInfo.length / 2) + 1
 
-  private val electionTimeoutFromMs = Properties.envOrElse("ELECTION_TIMEOUT_FROM_MS", "4000").toInt
-  private val electionTimeoutToMs = Properties.envOrElse("ELECTION_TIMEOUT_TO_MS", "7000").toInt
+  private val electionTimeoutFromMs = Properties.envOrElse("ELECTION_TIMEOUT_FROM_MS", "10000").toInt
+  private val electionTimeoutToMs = Properties.envOrElse("ELECTION_TIMEOUT_TO_MS", "20000").toInt
 
   def getElectionTimeoutMs(): Int = random.between(electionTimeoutFromMs, electionTimeoutToMs)
 
   // should be less than election timeout
   // todo: should be randomized?
-  def getHeartbeatIntervalMs(): Int = Properties.envOrElse("HEARTBEAT_INTERVAL_MS", "2000").toInt
+  def getHeartbeatIntervalMs(): Int = Properties.envOrElse("HEARTBEAT_INTERVAL_MS", "3000").toInt
 
 
 }

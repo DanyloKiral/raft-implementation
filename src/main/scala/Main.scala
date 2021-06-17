@@ -11,7 +11,7 @@ import akka.stream.Materializer
 import akka.stream.scaladsl.{Flow, RunnableGraph, Sink, Source}
 import com.typesafe.config.ConfigFactory
 import grpc.election.VoterHandler
-import models.Log
+import models.{GeneralServerStatus, Log}
 import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
 import shared.{Configs, ServerState}
@@ -22,6 +22,8 @@ import scala.util.{Failure, Success}
 import com.softwaremill.macwire._
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 import akka.http.scaladsl.marshalling.{Marshaller, ToResponseMarshaller}
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import spray.json.RootJsonFormat
 import spray.json.DefaultJsonProtocol._
 
@@ -34,6 +36,7 @@ object Main extends App {
   implicit val materializer: Materializer = Materializer(system)
   implicit val clientJsonFormat: RootJsonFormat[Log] = jsonFormat1(Log)
   implicit val executionContext: ExecutionContextExecutor = system.dispatcher
+  implicit val mapper: ObjectMapper = new ObjectMapper().registerModule(DefaultScalaModule)
 
   lazy val serverState = wire[ServerState]
   lazy val replicationSender = wire[ReplicationSender]
@@ -47,7 +50,11 @@ object Main extends App {
 
   electionService.resetElectionTimeout()
 
-  system.registerOnTermination(() => electionService.close)
+  system.registerOnTermination(() => {
+    electionService.close
+    serverState.close
+    logState.close
+  })
 
   private def startGrpcServer() = {
     lazy val voter = wire[VoterImplementation]
@@ -82,8 +89,7 @@ object Main extends App {
                 handleSync(_ => HttpResponse(StatusCodes.OK))
               },
               path("status") {
-                // todo: implement Status endpoint
-                handleSync(_ => HttpResponse(StatusCodes.OK))
+                handleSync(_ => HttpResponse(StatusCodes.OK, entity = HttpEntity(ContentTypes.`application/json`, mapper.writeValueAsString(collectGeneralServerStatus))))
               }
             )
           },
@@ -100,4 +106,15 @@ object Main extends App {
       )
     }
   }
+
+  private def collectGeneralServerStatus(): GeneralServerStatus =
+    GeneralServerStatus(
+      serverState.getCurrentTerm,
+      serverState.grantedVote,
+      logState.getAllLogs,
+      logState.getCommitIndex,
+      logState.getLastApplied,
+      if (serverState.isLeader) Some(logState.getNextIndex.toList) else None,
+      if (serverState.isLeader) Some(logState.getMatchIndex.toList) else None
+    )
 }

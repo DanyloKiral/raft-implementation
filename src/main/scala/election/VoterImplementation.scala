@@ -2,11 +2,13 @@ package election
 
 import grpc.election.{CandidateData, Vote, Voter}
 import org.slf4j.Logger
+import replication.LogState
 import shared.ServerState
 
 import scala.concurrent.Future
 
-class VoterImplementation (electionService: ElectionService, serverState: ServerState) (implicit logger: Logger) extends Voter {
+class VoterImplementation (electionService: ElectionService, serverState: ServerState, logState: LogState)
+                          (implicit logger: Logger) extends Voter {
   logger.info("Starting Voter...")
 
   override def requestVote(in: CandidateData): Future[Vote] = in.term match {
@@ -34,8 +36,20 @@ class VoterImplementation (electionService: ElectionService, serverState: Server
         }
       }
 
-  private def vote(in: CandidateData) = {
-    // todo: apply log check for election
+  private def vote(in: CandidateData): Future[Vote] = {
+    val myLastLog = logState.getLastLog
+    if (myLastLog.nonEmpty) {
+
+      if (myLastLog.get.term > in.lastLogTerm) {
+        logger.info(s"Rejecting candidate ${in.candidateId}; My last log term is higher (${myLastLog.get.term} > ${in.lastLogTerm})")
+        return Future.successful(Vote(serverState.getCurrentTerm, false))
+
+      } else if (myLastLog.get.term == in.lastLogTerm && myLastLog.get.index > in.lastLogIndex) {
+        logger.info(s"Rejecting candidate ${in.candidateId}; My last log is longer (${myLastLog.get.index} > ${in.lastLogIndex})")
+        return Future.successful(Vote(serverState.getCurrentTerm, false))
+      }
+    }
+
     logger.info(s"Voting for ${in.candidateId}")
 
     serverState.voteFor(in.candidateId)

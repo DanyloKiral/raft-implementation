@@ -9,17 +9,11 @@ class ServerState (implicit logger: Logger) {
   val stateStorage = persistent.Map[String, String, Nothing, Glass](dir = Configs.StateStorageFolder)
 
   val ServerID: String = Configs.ServerID
-  // todo: set leader ID
   var CurrentLeaderId: Option[String] = Option.empty
   private var CurrentTerm = stateStorage.get("CurrentTerm").getOrElse("0").toLong
-  if (CurrentTerm > 0) {
-    logger.info(s"CurrentTerm WAS RESTORED FROM STORAGE TO $CurrentTerm")
-  }
+
   private var State: ServerStateEnum = Follower
   private var VotedFor: Option[String] = stateStorage.get("VotedFor")
-  if (VotedFor.nonEmpty) {
-    logger.info(s"VotedFor WAS RESTORED FROM STORAGE TO $VotedFor")
-  }
 
   if (stateStorage.isEmpty) {
     stateStorage.put("CurrentTerm", CurrentTerm.toString)
@@ -34,6 +28,7 @@ class ServerState (implicit logger: Logger) {
   def becomeLeader(): Unit = {
     logger.info("Becoming a Leader")
     State = Leader
+    setLeaderId(ServerID)
   }
 
   def becomeFollower(): Unit = {
@@ -45,7 +40,7 @@ class ServerState (implicit logger: Logger) {
 
   def isFollower(): Boolean = State == Follower
   def isLeader(): Boolean = State == Leader
-
+  def setLeaderId(id: String) = CurrentLeaderId = Some(id)
 
   def increaseTerm(newTerm: Long) = {
     if (newTerm <= CurrentTerm) {
@@ -55,6 +50,7 @@ class ServerState (implicit logger: Logger) {
     logger.info(s"Increasing current term to $newTerm")
     CurrentTerm = newTerm
     stateStorage.update("CurrentTerm", CurrentTerm.toString)
+    clearVotedFor
   }
 
   def getCurrentTerm() = CurrentTerm
@@ -63,12 +59,14 @@ class ServerState (implicit logger: Logger) {
   def grantedVote() = VotedFor
   def voteFor(candidateId: String) = {
     VotedFor = Option(candidateId)
-    if (stateStorage.contains("VotedFor")) {
-      stateStorage.update("VotedFor", candidateId)
-    } else {
-      stateStorage.put("VotedFor", candidateId)
-    }
+    stateStorage.put("VotedFor", candidateId)
   }
+  private def clearVotedFor() = {
+    VotedFor = None
+    stateStorage.remove("VotedFor")
+  }
+
+  def close() = stateStorage.close
 }
 
 
