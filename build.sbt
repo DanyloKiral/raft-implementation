@@ -30,3 +30,5 @@ libraryDependencies ++= Seq(
 
 libraryDependencies += "com.softwaremill.macwire" %% "macros" % "2.3.7" % "provided"
 libraryDependencies += "com.softwaremill.macwire" %% "macrosakka" % "2.3.7" % "provided"
+
+libraryDependencies += "io.swaydb" %% "swaydb" % "0.16.2"

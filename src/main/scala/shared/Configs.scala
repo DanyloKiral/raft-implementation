@@ -14,6 +14,9 @@ object Configs {
   val GrpcPort = Properties.envOrElse("GRPC_PORT", "5051").toInt
   val ExposedHttpPort = Properties.envOrElse("EXPOSED_HTTP_PORT", "6050").toInt
 
+  val StateStorageFolder = Properties.envOrElse("STATE_STORAGE_FOLDER", "state")
+  val LogStorageFolder = Properties.envOrElse("LOG_STORAGE_FOLDER", "log")
+
   // all servers, including this
   private val envServersInfo = parse(Properties.envOrElse("SERVERS_INFO_JSON", "[]")).extract[Array[ServerInfo]]
   val ServersInfo = if (envServersInfo.nonEmpty)
@@ -35,4 +38,6 @@ object Configs {
   // should be less than election timeout
   // todo: should be randomized?
   def getHeartbeatIntervalMs(): Int = Properties.envOrElse("HEARTBEAT_INTERVAL_MS", "2000").toInt
+
+
 }

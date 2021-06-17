@@ -7,19 +7,19 @@ import shared.ServerState
 
 import scala.concurrent.Future
 
-class ReplicationReceiver (electionService: ElectionService, logState: LogState) (implicit logger: Logger) extends Replication {
+class ReplicationReceiver (electionService: ElectionService, serverState: ServerState, logState: LogState) (implicit logger: Logger) extends Replication {
   logger.info("Starting Replication receiver...")
 
   override def appendEntries(in: EntryData): Future[ReplicationResult] = {
     logger.info(s"Received AppendEntries from ${in.leaderId}")
 
-    if (in.term < ServerState.getCurrentTerm) {
+    if (in.term < serverState.getCurrentTerm) {
       logger.info("I have higher term")
-      return Future.successful(ReplicationResult(ServerState.getCurrentTerm, false))
+      return Future.successful(ReplicationResult(serverState.getCurrentTerm, false))
     }
 
-    if (in.term > ServerState.getCurrentTerm) {
-      ServerState.increaseTerm(in.term)
+    if (in.term > serverState.getCurrentTerm) {
+      serverState.increaseTerm(in.term)
     }
     electionService.stepDownIfNeeded
 
@@ -28,13 +28,13 @@ class ReplicationReceiver (electionService: ElectionService, logState: LogState)
       logState.hasEntryWithIndexAndTerm(in.prevLogIndex, in.prevLogTerm)) {
 
       logger.info("I have missed entries!")
-      return Future.successful(ReplicationResult(ServerState.getCurrentTerm, false))
+      return Future.successful(ReplicationResult(serverState.getCurrentTerm, false))
     }
 
     if (in.entries.nonEmpty) {
       // todo: handle adding new entries
     }
 
-    Future.successful(ReplicationResult(ServerState.getCurrentTerm, true))
+    Future.successful(ReplicationResult(serverState.getCurrentTerm, true))
   }
 }

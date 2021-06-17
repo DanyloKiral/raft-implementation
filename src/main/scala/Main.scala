@@ -14,7 +14,7 @@ import grpc.election.VoterHandler
 import models.Log
 import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
-import shared.Configs
+import shared.{Configs, ServerState}
 
 import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.concurrent.duration._
@@ -35,6 +35,7 @@ object Main extends App {
   implicit val clientJsonFormat: RootJsonFormat[Log] = jsonFormat1(Log)
   implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
+  lazy val serverState = wire[ServerState]
   lazy val replicationSender = wire[ReplicationSender]
   lazy val electionService = wire[ElectionService]
   lazy val logState = wire[LogState]

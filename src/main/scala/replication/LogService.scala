@@ -5,14 +5,13 @@ import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpRequest, HttpResp
 import akka.http.scaladsl.server
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
-import models.Log
+import models.{Log, ReplicateLogFuncData, ReplicationResponse}
 import org.slf4j.Logger
 import shared.{Configs, ServerState}
 import akka.http.scaladsl.server.Directives._
 import akka.stream.{FlowShape, Graph}
 import akka.stream.scaladsl.{Balance, Broadcast, BroadcastHub, Flow, GraphDSL, Keep, Merge, RetryFlow, Sink, Source}
 import grpc.replication.{LogEntry, ReplicationResult}
-import models.Types.{ReplicateLogFuncData, ReplicationResponse}
 import GraphDSL.Implicits._
 import akka.NotUsed
 import election.ElectionService
@@ -21,19 +20,19 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 import scala.concurrent.duration._
 
-class LogService (replicationSender: ReplicationSender, electionService: ElectionService, logState: LogState)
+class LogService (replicationSender: ReplicationSender, electionService: ElectionService, serverState: ServerState, logState: LogState)
                  (implicit executionContext: ExecutionContext, logger: Logger, system: ActorSystem) {
   private val mapper: ObjectMapper = new ObjectMapper().registerModule(DefaultScalaModule)
   private val LogProcessingGraph = formatLogProcessingGraph
 
   def handleLogFromClient(log: Log): Future[HttpResponse] = {
-    if (ServerState.isLeader()) {
+    if (serverState.isLeader()) {
       // todo: send leader url?
       return Future.successful(httpResponse(StatusCodes.MisdirectedRequest))
     }
 
     // todo: next index?
-    val entry = LogEntry(ServerState.getCurrentTerm, 1, log.command)
+    val entry = LogEntry(serverState.getCurrentTerm, 1, log.command)
 
     val currentLogIndex = logState.appendLog(entry)
 
@@ -59,39 +58,44 @@ class LogService (replicationSender: ReplicationSender, electionService: Electio
 
   private def formatLogProcessingGraph(): Graph[FlowShape[ReplicateLogFuncData, ReplicationResponse], NotUsed] = {
     val flowToRetry = Flow[ReplicateLogFuncData]
-      .mapAsyncUnordered(1)(action => action._2(action._1))
+      .mapAsyncUnordered(1)(action => action.replicationFunc(action.entryData))
 
     // todo: change retry interval
     val retryFlow = RetryFlow.withBackoff(5.seconds, 10.seconds, 1, -1, flowToRetry)((i, o) =>
-      o._2 match {
+      o.replicationResult match {
           // if follower has outdated log - need to retry
         case Some(result)
-          if ServerState.isLeader && !result.success && result.term == ServerState.getCurrentTerm => {
+          if serverState.isLeader && !result.success && result.term == serverState.getCurrentTerm => {
 
-          val newPrevIndex = i._1.prevLogIndex - 1
+          val newPrevIndex = i.entryData.prevLogIndex - 1
           val entries = logState.getEntryFromIndex(newPrevIndex)
           val newPrevTerm = entries.last.term
-
+          logger.info(s"Follower ${o.followerId} is outdated. Sending entries from index = ${newPrevIndex + 1}")
           val newEntryData = replicationSender.logToEntryData(
             entries.dropRight(1),
             Some(newPrevIndex),
             Some(newPrevTerm)
           )
 
-          Some((newEntryData, i._2))
+          Some(ReplicateLogFuncData(newEntryData, i.replicationFunc))
         }
           // retry if no response
-        case None if ServerState.isLeader => Some(i)
+        case None if serverState.isLeader => Some(i)
         case _ => None
       })
 
     val processReplicationResultSink = Sink.foreach((data: ReplicationResponse) =>
-      data._2 match {
-        case Some(result) if !result.success && result.term > ServerState.getCurrentTerm => {
-          ServerState.increaseTerm(result.term)
+      data.replicationResult match {
+        case Some(result) if !result.success && result.term > serverState.getCurrentTerm => {
+          serverState.increaseTerm(result.term)
           electionService.stepDownIfNeeded()
         }
-        case _ => {}
+        case Some(result) if result.success => {
+          logState.updateMatchIndexForFollower(data.followerId, data.entryData.entries.map(x => x.index).max)
+        }
+        case _ => {
+          logger.warn(s"Unexpected result of AppendEntries. state = $data")
+        }
       })
 
     GraphDSL.create[FlowShape[ReplicateLogFuncData, ReplicationResponse]]() { implicit graphBuilder =>
