@@ -84,10 +84,8 @@ class ElectionService (replicationSender: ReplicationSender,
             winElection
           }
         }
-
-        // todo: handle other cases
       }
-      case Failure(exception) => logger.error("Unexpected Vote failure", exception)
+      case Failure(exception) => logger.error("Vote failure")
     })
   }
 

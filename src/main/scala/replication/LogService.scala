@@ -23,7 +23,6 @@ class LogService (replicationSender: ReplicationSender, electionService: Electio
 
   def handleLogFromClient(log: Log): Future[HttpResponse] = {
     if (!serverState.isLeader) {
-      // todo: send leader url?
       return Future.successful(httpResponse(StatusCodes.MisdirectedRequest))
     }
 

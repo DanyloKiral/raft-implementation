@@ -28,7 +28,7 @@ class ReplicationSender (serverState: ServerState, logState: LogState)
   def getSendFunctions(): List[ReplicationFunc] =
     receiverClients.toList
       .map(followerData => () =>
-        sendAppendEntryToClient(followerData._2, getEntryData(followerData._1)).transform { value =>
+        sendAppendEntryToClient(followerData._2, getEntryData(followerData._1), followerData._1).transform { value =>
           Try(ReplicationResponse(followerData._1, value.get))
         })
 
@@ -51,15 +51,8 @@ class ReplicationSender (serverState: ServerState, logState: LogState)
   }
 
   def sendHeartbeats() = {
-    // todo: compose EntryData the same way as for replication?
     val data = EntryData(serverState.getCurrentTerm, serverState.ServerID, 0, 0, Seq(), logState.getCommitIndex)
-    receiverClients.map(c => sendAppendEntryToClient(c._2, data))
-  }
-
-  def replicateLogEntriesTo(entries: Seq[LogEntry], followerId: String) = {
-    // todo: consider resetting heartbeat interval for separate node
-    val data = EntryData(serverState.getCurrentTerm, serverState.ServerID, 0, 0, entries, 0)
-    receiverClients(followerId).appendEntries(data)
+    receiverClients.map(c => sendAppendEntryToClient(c._2, data, c._1))
   }
 
   def resetHeartbeatInterval(newLeader: Boolean = false) = {
@@ -78,11 +71,11 @@ class ReplicationSender (serverState: ServerState, logState: LogState)
     heartbeatIntervalScheduler = Option(ref)
   }
 
-  private def sendAppendEntryToClient(replicationClient: ReplicationClient, entryData: EntryData): Future[Option[ReplicationResult]] = {
+  private def sendAppendEntryToClient(replicationClient: ReplicationClient, entryData: EntryData, followerId: String): Future[Option[ReplicationResult]] = {
     replicationClient.appendEntries(entryData).transform{
       case Success(result) => Try(Some(result))
       case Failure(exception) => {
-        logger.error("Error sending AppendEntry to followers", exception)
+        logger.error(s"Failed to send AppendEntry to $followerId")
         Try(None)
       }
     }
