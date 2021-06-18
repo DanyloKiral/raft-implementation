@@ -14,6 +14,9 @@ class LogState (stateMachine: StateMachine, serverState: ServerState) (implicit 
 
   private val logList = persistent.Map[Long, LogEntry, Nothing, Glass](dir = Configs.LogStorageFolder)
   private var lastIndex = 0L
+  if (logList.nonEmpty) {
+    lastIndex = logList.keys.materialize.max
+  }
 
   private var commitIndex = 0L
   private var lastApplied = 0L
@@ -39,7 +42,7 @@ class LogState (stateMachine: StateMachine, serverState: ServerState) (implicit 
     if (commitIndex >= index) {
       logger.warn(s"Committing index = $index, while last committed was $commitIndex")
     } else {
-      commitIndex = index
+      commitIndex = index min lastIndex
     }
 
     if (commitIndex > lastApplied) {
@@ -101,6 +104,7 @@ class LogState (stateMachine: StateMachine, serverState: ServerState) (implicit 
   def hasEntryWithIndexAndTerm(index: Long, term: Long) =
     logList.get(index).exists(_.term == term)
 
+  def getLastLogIndex() = lastIndex
   def getLastLog(): Option[LogEntry] =
     if (lastIndex > 0) logList.get(lastIndex) else None
 

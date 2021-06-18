@@ -28,7 +28,7 @@ class ReplicationReceiver (electionService: ElectionService, serverState: Server
       if (in.prevLogIndex != 0 && in.prevLogTerm != 0 &&
         !logState.hasEntryWithIndexAndTerm(in.prevLogIndex, in.prevLogTerm)) {
 
-        logger.info(s"I have missed entries! in = $in")
+        logger.info(s"I have missed entries! my lastlog index = ${logState.getLastLogIndex} in = $in")
         return Future.successful(ReplicationResult(serverState.getCurrentTerm, false))
       }
 
