@@ -37,9 +37,9 @@ class ReplicationSender (serverState: ServerState, logState: LogState)
 
     logger.info(s"Sending log to follower $followerId from index = $followerNextIndex")
 
-    val prevEntry = if (followerNextIndex > 1)
+    val prevEntry = (if (followerNextIndex > 1)
       logState.getEntryByIndex(followerNextIndex - 1) else
-      LogEntry(0, 0)
+      None).getOrElse(LogEntry(0, 0))
 
     EntryData(
       serverState.getCurrentTerm,

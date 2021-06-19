@@ -26,7 +26,19 @@ class LogState (stateMachine: StateMachine, serverState: ServerState) (implicit 
 
   def getNextIndexForEntry() = lastIndex + 1
 
-  def appendLog(log: LogEntry) = {
+  def appendLog(log: LogEntry): Unit = {
+    val existingEntry = getEntryByIndex(log.index)
+    if (existingEntry.nonEmpty && existingEntry.get.term == log.term) {
+      logger.info(s"Ignoring entry with index = ${log.index} and term = ${log.term} - already exists")
+      return
+    }
+
+    if (lastIndex > log.index) {
+      logger.info(s"Clearing logs, inconsistent with current leader; from index ${log.index} to $lastIndex")
+      (log.index to lastIndex)
+        .foreach(logList.remove(_))
+    }
+
     logList.put(log.index, log)
     lastIndex = log.index
     logger.info(s"Appended log = $log")
@@ -49,7 +61,9 @@ class LogState (stateMachine: StateMachine, serverState: ServerState) (implicit 
       val indexesToApply = lastApplied to commitIndex
       indexesToApply
         .drop(1)
-        .map(logList.get(_).get)
+        .map(logList.get(_))
+        .filter(_.nonEmpty)
+        .map(_.get)
         .foreach(entry => {
           stateMachine.applyCommand(entry.command)
           lastApplied = entry.index
@@ -99,7 +113,7 @@ class LogState (stateMachine: StateMachine, serverState: ServerState) (implicit 
       .map(_.get)
 
   def getEntryByIndex(index: Long) =
-    logList.get(index).get
+    logList.get(index)
 
   def hasEntryWithIndexAndTerm(index: Long, term: Long) =
     logList.get(index).exists(_.term == term)
