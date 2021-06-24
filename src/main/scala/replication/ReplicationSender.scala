@@ -11,7 +11,7 @@ import spray.json.RootJsonFormat
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContextExecutor, Future}
-import scala.util.{Either, Failure, Success, Try}
+import scala.util.{Failure, Success, Try}
 
 class ReplicationSender (serverState: ServerState, logState: LogState)
                         (implicit system: ActorSystem, executionContext: ExecutionContextExecutor,
@@ -23,6 +23,8 @@ class ReplicationSender (serverState: ServerState, logState: LogState)
       .toMap
 
   private val electorActor = system.actorOf(Props[HeartbeatSender](new HeartbeatSender(this)))
+
+  @volatile
   private var heartbeatIntervalScheduler: Option[Cancellable] = Option.empty
 
   def getSendFunctions(): List[ReplicationFunc] =
@@ -55,14 +57,18 @@ class ReplicationSender (serverState: ServerState, logState: LogState)
     receiverClients.map(c => sendAppendEntryToClient(c._2, data, c._1))
   }
 
-  def resetHeartbeatInterval(newLeader: Boolean = false) = {
+  def cancelHeartbeats() = {
     if (heartbeatIntervalScheduler.nonEmpty) {
-      logger.info("Reset heartbeat interval")
+      logger.info("Cancel heartbeat interval")
       heartbeatIntervalScheduler.get.cancel()
       heartbeatIntervalScheduler = Option.empty
-    } else {
-      logger.info("Started heartbeat interval")
     }
+  }
+
+  def resetHeartbeatInterval(newLeader: Boolean = false) = {
+    cancelHeartbeats
+
+    logger.info("Starting heartbeat interval")
 
     val initialTimeout = if (newLeader) Duration.Zero else Configs.getHeartbeatIntervalMs.milliseconds
 

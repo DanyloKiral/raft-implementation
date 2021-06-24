@@ -1,27 +1,22 @@
-import akka.Done
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpRequest, HttpResponse, StatusCodes}
 import election.{ElectionService, VoterImplementation}
-import grpc.replication.{Replication, ReplicationHandler, ReplicationResult}
+import grpc.replication.ReplicationHandler
 import replication.{LogService, LogState, ReplicationReceiver, ReplicationSender, StateMachine}
 import akka.grpc.scaladsl.ServiceHandler
 import akka.http.scaladsl.server.Directives._
 import akka.stream.Materializer
-import akka.stream.scaladsl.{Flow, RunnableGraph, Sink, Source}
+import akka.stream.scaladsl.Source
 import com.typesafe.config.ConfigFactory
 import grpc.election.VoterHandler
 import models.{GeneralServerStatus, Log}
 import org.slf4j.LoggerFactory
-import org.slf4j.event.Level
 import shared.{Configs, ServerState}
 
 import scala.concurrent.{ExecutionContextExecutor, Future}
-import scala.concurrent.duration._
-import scala.util.{Failure, Success}
 import com.softwaremill.macwire._
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
-import akka.http.scaladsl.marshalling.{Marshaller, ToResponseMarshaller}
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import spray.json.RootJsonFormat

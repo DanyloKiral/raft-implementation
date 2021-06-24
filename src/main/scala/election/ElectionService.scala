@@ -1,16 +1,17 @@
 package election
 
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
+
 import akka.actor.{Actor, ActorSystem, Cancellable, Props}
 import akka.grpc.GrpcClientSettings
-import grpc.election.{CandidateData, Vote, Voter, VoterClient}
+import grpc.election.{CandidateData, VoterClient}
 import org.slf4j.Logger
 import replication.{LogState, ReplicationSender}
 import shared.{Configs, ServerState}
 
-import scala.concurrent.{Await, ExecutionContextExecutor, Future}
+import scala.concurrent.{Await, ExecutionContextExecutor}
 import scala.concurrent.duration._
-import com.softwaremill.macwire.akkasupport._
-import grpc.replication.{EntryData, LogEntry}
+import grpc.replication.LogEntry
 
 import scala.util.{Failure, Success}
 
@@ -26,11 +27,12 @@ class ElectionService (replicationSender: ReplicationSender,
       .map(VoterClient(_))
 
   private val electorActor = system.actorOf(Props[Elector](new Elector(this)))
+
+  @volatile
   private var electionTimeoutScheduler: Option[Cancellable] = Option.empty
-  private var electionFutures: Option[Array[Future[Vote]]] = Option.empty
 
 
-  def resetElectionTimeout() = {
+   def resetElectionTimeout() = {
     clearElectionTimeout
 
     logger.info("Started new election timeout")
@@ -45,6 +47,7 @@ class ElectionService (replicationSender: ReplicationSender,
       serverState.becomeFollower
     }
 
+    replicationSender.cancelHeartbeats
     resetElectionTimeout
   }
 
@@ -63,30 +66,29 @@ class ElectionService (replicationSender: ReplicationSender,
   }
 
   private def requestVotes() = {
-    var collectedVotes = 1
-    var wonElection = false
+    val collectedVotes = new AtomicInteger(1)
+    val wonElection = new AtomicBoolean(false)
 
     val candidateData = collectCandidateData()
-    val futures = voterClients.map(c => c.requestVote(candidateData))
-    electionFutures = Option(futures)
 
-    futures.foreach(_.onComplete {
-      case Success(value) => {
-        if (value.term > serverState.getCurrentTerm) {
-          serverState.increaseTerm(value.term)
-          stepDownIfNeeded
-          collectedVotes = 0
-        } else if (value.voteGranted && !wonElection) {
-          collectedVotes += 1
+    voterClients.map(c => c.requestVote(candidateData))
+      .foreach(_.onComplete {
+        case Success(value) => {
+          if (value.term > serverState.getCurrentTerm) {
+            serverState.increaseTerm(value.term)
+            stepDownIfNeeded
+            collectedVotes.set(0)
+          } else if (value.voteGranted && !wonElection.get) {
+            collectedVotes.incrementAndGet()
 
-          if (collectedVotes >= Configs.ClusterQuorumNumber) {
-            wonElection = true
-            winElection
+            if (collectedVotes.get >= Configs.ClusterQuorumNumber) {
+              wonElection.set(true)
+              winElection
+            }
           }
         }
-      }
-      case Failure(exception) => logger.error("Vote failure")
-    })
+        case Failure(exception) => logger.error("Vote failure")
+      })
   }
 
   private def winElection() = {

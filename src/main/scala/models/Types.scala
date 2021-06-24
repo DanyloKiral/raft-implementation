@@ -1,6 +1,6 @@
 package models
 
-import grpc.replication.{EntryData, ReplicationResult}
+import grpc.replication.ReplicationResult
 
 import scala.concurrent.Future
 

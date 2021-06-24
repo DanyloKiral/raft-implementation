@@ -1,5 +1,7 @@
 package shared
 
+import java.util.concurrent.atomic.AtomicLong
+
 import models.ServerStateEnum._
 import org.slf4j.Logger
 import swaydb._
@@ -9,10 +11,15 @@ class ServerState (implicit logger: Logger) {
   val stateStorage = persistent.Map[String, String, Nothing, Glass](dir = Configs.StateStorageFolder)
 
   val ServerID: String = Configs.ServerID
-  var CurrentLeaderId: Option[String] = Option.empty
-  private var CurrentTerm = stateStorage.get("CurrentTerm").getOrElse("0").toLong
 
+  @volatile
+  var CurrentLeaderId: Option[String] = Option.empty
+
+  private val CurrentTerm = new AtomicLong(stateStorage.get("CurrentTerm").getOrElse("0").toLong)
+
+  @volatile
   private var State: ServerStateEnum = Follower
+  @volatile
   private var VotedFor: Option[String] = stateStorage.get("VotedFor")
 
   if (stateStorage.isEmpty) {
@@ -21,7 +28,7 @@ class ServerState (implicit logger: Logger) {
 
   def becomeCandidate(): Unit = {
     logger.info("Becoming a Candidate")
-    increaseTerm(CurrentTerm + 1)
+    increaseTerm(CurrentTerm.get + 1)
     State = Candidate
   }
 
@@ -43,17 +50,17 @@ class ServerState (implicit logger: Logger) {
   def setLeaderId(id: String) = CurrentLeaderId = Some(id)
 
   def increaseTerm(newTerm: Long) = {
-    if (newTerm <= CurrentTerm) {
+    if (newTerm <= CurrentTerm.get) {
       throw new Throwable(s"Error in increaseTerm; new term should be higher than current. current = $CurrentTerm; new = $newTerm")
     }
 
     logger.info(s"Increasing current term to $newTerm")
-    CurrentTerm = newTerm
-    stateStorage.update("CurrentTerm", CurrentTerm.toString)
+    CurrentTerm.set(newTerm)
+    stateStorage.update("CurrentTerm", CurrentTerm.get.toString)
     clearVotedFor
   }
 
-  def getCurrentTerm() = CurrentTerm
+  def getCurrentTerm() = CurrentTerm.get
 
 
   def grantedVote() = VotedFor
