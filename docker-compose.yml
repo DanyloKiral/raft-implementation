@@ -17,6 +17,13 @@ services:
       - ELECTION_TIMEOUT_FROM_MS=10000
       - ELECTION_TIMEOUT_TO_MS=20000
       - HEARTBEAT_INTERVAL_MS=3000
+    networks:
+      raft-network:
+        aliases:
+          - raft-server1
+      raft-network-internal:
+        aliases:
+          - raft-server1-internal
 
   raft-server2:
     container_name: raft-server2
@@ -34,6 +41,13 @@ services:
       - ELECTION_TIMEOUT_FROM_MS=10000
       - ELECTION_TIMEOUT_TO_MS=20000
       - HEARTBEAT_INTERVAL_MS=3000
+    networks:
+      raft-network:
+        aliases:
+          - raft-server2
+      raft-network-internal:
+        aliases:
+          - raft-server2-internal
 
   raft-server3:
     container_name: raft-server3
@@ -51,3 +65,17 @@ services:
       - ELECTION_TIMEOUT_FROM_MS=10000
       - ELECTION_TIMEOUT_TO_MS=20000
       - HEARTBEAT_INTERVAL_MS=3000
+    networks:
+      raft-network:
+        aliases:
+          - raft-server3
+      raft-network-internal:
+        aliases:
+          - raft-server3-internal
+
+networks:
+    raft-network:
+      name: raft-network
+    raft-network-internal:
+      name: raft-network-internal
+      internal: true

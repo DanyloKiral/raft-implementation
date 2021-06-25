@@ -22,9 +22,9 @@ object Configs {
   val ServersInfo = if (envServersInfo.nonEmpty)
     envServersInfo else
     Array(
-      ServerInfo("raft-server1", "raft-server1", GrpcPort),
-      ServerInfo("raft-server2", "raft-server2", GrpcPort),
-      ServerInfo("raft-server3", "raft-server3", GrpcPort)
+      ServerInfo("raft-server1", "raft-server1-internal", GrpcPort),
+      ServerInfo("raft-server2", "raft-server2-internal", GrpcPort),
+      ServerInfo("raft-server3", "raft-server3-internal", GrpcPort)
     )
 
 

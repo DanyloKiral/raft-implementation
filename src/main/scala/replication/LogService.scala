@@ -26,12 +26,14 @@ class LogService (replicationSender: ReplicationSender, electionService: Electio
       return Future.successful(httpResponse(StatusCodes.MisdirectedRequest))
     }
 
+    val currentTerm = serverState.getCurrentTerm
+
     val entry = LogEntry(serverState.getCurrentTerm, logState.getNextIndexForEntry, log.command)
 
     logState.appendLog(entry)
 
     val replicationHandlerSource =
-      Source(replicationSender.getSendFunctions())
+      Source(replicationSender.getSendFunctions(currentTerm))
         .via(LogProcessingGraph)
         .toMat(BroadcastHub.sink)(Keep.right)
         .run

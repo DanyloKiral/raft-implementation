@@ -27,14 +27,14 @@ class ReplicationSender (serverState: ServerState, logState: LogState)
   @volatile
   private var heartbeatIntervalScheduler: Option[Cancellable] = Option.empty
 
-  def getSendFunctions(): List[ReplicationFunc] =
+  def getSendFunctions(term: Long): List[ReplicationFunc] =
     receiverClients.toList
       .map(followerData => () =>
-        sendAppendEntryToClient(followerData._2, getEntryData(followerData._1), followerData._1).transform { value =>
+        sendAppendEntryToClient(followerData._2, getEntryData(followerData._1, term), followerData._1).transform { value =>
           Try(ReplicationResponse(followerData._1, value.get))
         })
 
-  def getEntryData(followerId: String) = {
+  def getEntryData(followerId: String, term: Long) = {
     val followerNextIndex = logState.getNextIndexForFollower(followerId)
 
     logger.info(s"Sending log to follower $followerId from index = $followerNextIndex")
@@ -44,7 +44,7 @@ class ReplicationSender (serverState: ServerState, logState: LogState)
       None).getOrElse(LogEntry(0, 0))
 
     EntryData(
-      serverState.getCurrentTerm,
+      term,
       serverState.ServerID,
       prevEntry.index,
       prevEntry.term,
