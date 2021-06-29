@@ -26,19 +26,19 @@ class ServerState (implicit logger: Logger) {
     stateStorage.put("CurrentTerm", CurrentTerm.toString)
   }
 
-  def becomeCandidate(): Unit = {
+  def becomeCandidate(): Unit = this.synchronized {
     logger.info("Becoming a Candidate")
     increaseTerm(CurrentTerm.get + 1)
     State = Candidate
   }
 
-  def becomeLeader(): Unit = {
+  def becomeLeader(): Unit = this.synchronized {
     logger.info("Becoming a Leader")
     State = Leader
     setLeaderId(ServerID)
   }
 
-  def becomeFollower(): Unit = {
+  def becomeFollower(): Unit = this.synchronized {
     if (State != Follower) {
       logger.info("Becoming a Follower")
       State = Follower
@@ -49,22 +49,22 @@ class ServerState (implicit logger: Logger) {
   def isLeader(): Boolean = State == Leader
   def setLeaderId(id: String) = CurrentLeaderId = Some(id)
 
-  def increaseTerm(newTerm: Long) = {
-    if (newTerm <= CurrentTerm.get) {
+  def increaseTerm(newTerm: Long) = this.synchronized {
+    if (newTerm < CurrentTerm.get) {
       throw new Throwable(s"Error in increaseTerm; new term should be higher than current. current = $CurrentTerm; new = $newTerm")
-    }
+    } else if (newTerm > CurrentTerm.get) {
+      logger.info(s"Increasing current term to $newTerm")
+      CurrentTerm.set(newTerm)
+      stateStorage.update("CurrentTerm", CurrentTerm.get.toString)
 
-    logger.info(s"Increasing current term to $newTerm")
-    CurrentTerm.set(newTerm)
-    stateStorage.update("CurrentTerm", CurrentTerm.get.toString)
-    clearVotedFor
+      clearVotedFor
+    }
   }
 
   def getCurrentTerm() = CurrentTerm.get
 
-
   def grantedVote() = VotedFor
-  def voteFor(candidateId: String) = {
+  def voteFor(candidateId: String) = this.synchronized {
     VotedFor = Option(candidateId)
     stateStorage.put("VotedFor", candidateId)
   }

@@ -22,8 +22,7 @@ services:
         aliases:
           - raft-server1
       raft-network-internal:
-        aliases:
-          - raft-server1-internal
+        ipv4_address: 10.10.0.11
 
   raft-server2:
     container_name: raft-server2
@@ -46,8 +45,7 @@ services:
         aliases:
           - raft-server2
       raft-network-internal:
-        aliases:
-          - raft-server2-internal
+        ipv4_address: 10.10.0.12
 
   raft-server3:
     container_name: raft-server3
@@ -70,8 +68,7 @@ services:
         aliases:
           - raft-server3
       raft-network-internal:
-        aliases:
-          - raft-server3-internal
+        ipv4_address: 10.10.0.13
 
 networks:
     raft-network:
@@ -79,3 +76,8 @@ networks:
     raft-network-internal:
       name: raft-network-internal
       internal: true
+      ipam:
+        driver: default
+        config:
+          - subnet: 10.10.0.0/16
+            gateway: 10.10.0.1

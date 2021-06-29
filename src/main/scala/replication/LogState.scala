@@ -118,8 +118,9 @@ class LogState (stateMachine: StateMachine, serverState: ServerState) (implicit 
   def getEntryByIndex(index: Long) =
     logList.get(index)
 
-  def hasEntryWithIndexAndTerm(index: Long, term: Long) =
+  def hasEntryWithIndexAndTerm(index: Long, term: Long) = {
     logList.get(index).exists(_.term == term)
+  }
 
   def getLastLogIndex() = lastIndex.get
   def getLastLog(): Option[LogEntry] =

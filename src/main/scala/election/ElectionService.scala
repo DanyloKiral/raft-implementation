@@ -108,7 +108,7 @@ class ElectionService (replicationSender: ReplicationSender,
       lastLog.term)
   }
 
-  private def clearElectionTimeout() = {
+  private def clearElectionTimeout() = this.synchronized {
     if (electionTimeoutScheduler.nonEmpty) {
       logger.info("Cleared election timeout")
       electionTimeoutScheduler.get.cancel()

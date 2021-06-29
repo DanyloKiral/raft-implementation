@@ -43,15 +43,19 @@ class LogService (replicationSender: ReplicationSender, electionService: Electio
     replicationHandlerSource
       .grouped(Configs.ClusterQuorumNumber - 1)
       .map(response => {
-        logState.commitAsLeader()
-        httpResponse(StatusCodes.OK)
+        if (!serverState.isLeader || response.exists(r => r.replicationResult.isEmpty || !r.replicationResult.get.success)) {
+          httpResponse(StatusCodes.ServiceUnavailable)
+        } else {
+          logState.commitAsLeader()
+          httpResponse(StatusCodes.OK)
+        }
       })
       .runWith(Sink.head)
   }
 
-  private def formatLogProcessingGraph(): Graph[FlowShape[ReplicationFunc, ReplicationResponse], NotUsed] = {
-    val flowToRetry = Flow[ReplicationFunc]
-      .mapAsyncUnordered(1)(action => action())
+  private def formatLogProcessingGraph(): Graph[FlowShape[(Long, ReplicationFunc), ReplicationResponse], NotUsed] = {
+    val flowToRetry = Flow[(Long, ReplicationFunc)]
+      .mapAsyncUnordered(1)(action => action._2())
 
     val retryFlow = RetryFlow.withBackoff(
       Configs.getHeartbeatIntervalMs.millis, (Configs.getHeartbeatIntervalMs * 2).millis, 1, -1, flowToRetry)((i, o) =>
@@ -59,7 +63,7 @@ class LogService (replicationSender: ReplicationSender, electionService: Electio
       o.replicationResult match {
           // if follower has outdated log - need to retry
         case Some(result)
-          if serverState.isLeader && !result.success && result.term == serverState.getCurrentTerm => {
+          if serverState.isLeader && !result.success && result.term == i._1 => {
 
             logState.decreaseNextIndexForFollower(o.followerId)
             Some(i)
@@ -81,11 +85,11 @@ class LogService (replicationSender: ReplicationSender, electionService: Electio
           logger.warn(s"Unexpected result of AppendEntries. state = $data")
       })
 
-    GraphDSL.create[FlowShape[ReplicationFunc, ReplicationResponse]]() { implicit graphBuilder =>
-      val IN = graphBuilder.add(Broadcast[ReplicationFunc](1))
+    GraphDSL.create[FlowShape[(Long, ReplicationFunc), ReplicationResponse]]() { implicit graphBuilder =>
+      val IN = graphBuilder.add(Broadcast[(Long, ReplicationFunc)](1))
       val PROCESS_REPLICATION = graphBuilder.add(Broadcast[ReplicationResponse](2))
       val parallelNo = Configs.ServersInfo.size - 1
-      val BALANCE = graphBuilder.add(Balance[ReplicationFunc](parallelNo))
+      val BALANCE = graphBuilder.add(Balance[(Long, ReplicationFunc)](parallelNo))
       val MERGE = graphBuilder.add(Merge[ReplicationResponse](parallelNo))
       val OUT = graphBuilder.add(Merge[ReplicationResponse](1))
 

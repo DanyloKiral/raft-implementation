@@ -13,7 +13,7 @@ class ReplicationReceiver (electionService: ElectionService, serverState: Server
   logger.info("Starting Replication receiver...")
 
   override def appendEntries(in: EntryData): Future[ReplicationResult] = {
-    logger.info(s"Received AppendEntries from ${in.leaderId}")
+    logger.info(s"Received AppendEntries from ${in.leaderId}; in data = $in, my term = ${serverState.getCurrentTerm}")
 
     if (in.term < serverState.getCurrentTerm) {
       logger.info("I have higher term")
@@ -23,21 +23,21 @@ class ReplicationReceiver (electionService: ElectionService, serverState: Server
     }
 
     electionService.stepDownIfNeeded
+    serverState.setLeaderId(in.leaderId)
+
+    if (in.prevLogIndex != 0 && in.prevLogTerm != 0 &&
+      !logState.hasEntryWithIndexAndTerm(in.prevLogIndex, in.prevLogTerm)) {
+
+      logger.info(s"I have missed entries! my lastlog index = ${logState.getLastLogIndex} in = $in")
+      return Future.successful(ReplicationResult(serverState.getCurrentTerm, false))
+    }
 
     if (in.entries.nonEmpty) {
-      if (in.prevLogIndex != 0 && in.prevLogTerm != 0 &&
-        !logState.hasEntryWithIndexAndTerm(in.prevLogIndex, in.prevLogTerm)) {
-
-        logger.info(s"I have missed entries! my lastlog index = ${logState.getLastLogIndex} in = $in")
-        return Future.successful(ReplicationResult(serverState.getCurrentTerm, false))
-      }
-
       in.entries.foreach(e => logState.appendLog(e))
     }
 
     logState.commit(in.leaderCommit)
 
-    serverState.setLeaderId(in.leaderId)
     Future.successful(ReplicationResult(serverState.getCurrentTerm, true))
   }
 }

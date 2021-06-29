@@ -27,12 +27,12 @@ class ReplicationSender (serverState: ServerState, logState: LogState)
   @volatile
   private var heartbeatIntervalScheduler: Option[Cancellable] = Option.empty
 
-  def getSendFunctions(term: Long): List[ReplicationFunc] =
+  def getSendFunctions(term: Long): List[(Long, ReplicationFunc)] =
     receiverClients.toList
-      .map(followerData => () =>
-        sendAppendEntryToClient(followerData._2, getEntryData(followerData._1, term), followerData._1).transform { value =>
-          Try(ReplicationResponse(followerData._1, value.get))
-        })
+      .map(followerData => (term, () =>
+        sendAppendEntryToClient(followerData._2, getEntryData(followerData._1, term), followerData._1)
+          .transform { value => Try(ReplicationResponse(followerData._1, value.get)) }
+      ))
 
   def getEntryData(followerId: String, term: Long) = {
     val followerNextIndex = logState.getNextIndexForFollower(followerId)
@@ -52,10 +52,12 @@ class ReplicationSender (serverState: ServerState, logState: LogState)
       logState.getCommitIndex)
   }
 
-  def sendHeartbeats() = {
-    val data = EntryData(serverState.getCurrentTerm, serverState.ServerID, 0, 0, Seq(), logState.getCommitIndex)
-    receiverClients.map(c => sendAppendEntryToClient(c._2, data, c._1))
-  }
+  def sendHeartbeats() =
+    receiverClients.map(c => sendAppendEntryToClient(c._2, getEntryData(c._1, serverState.getCurrentTerm), c._1).onComplete {
+      case Success(value) if value.nonEmpty && !value.get.success && value.get.term == serverState.getCurrentTerm =>
+        logState.decreaseNextIndexForFollower(c._1)
+      case _ => {}
+    })
 
   def cancelHeartbeats() = {
     if (heartbeatIntervalScheduler.nonEmpty) {
@@ -78,10 +80,14 @@ class ReplicationSender (serverState: ServerState, logState: LogState)
   }
 
   private def sendAppendEntryToClient(replicationClient: ReplicationClient, entryData: EntryData, followerId: String): Future[Option[ReplicationResult]] = {
+    if (!serverState.isLeader) {
+      return Future.successful(None)
+    }
+
     replicationClient.appendEntries(entryData).transform{
       case Success(result) => Try(Some(result))
       case Failure(exception) => {
-        logger.error(s"Failed to send AppendEntry to $followerId")
+        logger.error(s"Failed to send AppendEntry to $followerId. Exception = $exception")
         Try(None)
       }
     }
