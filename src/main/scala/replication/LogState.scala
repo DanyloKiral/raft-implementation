@@ -74,9 +74,11 @@ class LogState (stateMachine: StateMachine, serverState: ServerState) (implicit 
 
   def commitAsLeader() = commit(lastIndex.get)
 
-  def replicatedToFollower(followerId: String) = {
-    matchIndex.put(followerId, lastIndex.get)
-    nextIndex.put(followerId, lastIndex.get + 1)
+  def logReplicatedToCount(index: Long) = matchIndex.count(_._2 >= index)
+
+  def replicatedToFollower(followerId: String, index: Long = lastIndex.get) = {
+    matchIndex.put(followerId, index)
+    nextIndex.put(followerId, index + 1)
   }
 
   def initLeaderState(): Unit = {

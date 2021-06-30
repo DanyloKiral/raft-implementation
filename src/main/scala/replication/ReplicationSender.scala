@@ -53,10 +53,27 @@ class ReplicationSender (serverState: ServerState, logState: LogState)
   }
 
   def sendHeartbeats() =
-    receiverClients.map(c => sendAppendEntryToClient(c._2, getEntryData(c._1, serverState.getCurrentTerm), c._1).onComplete {
-      case Success(value) if value.nonEmpty && !value.get.success && value.get.term == serverState.getCurrentTerm =>
-        logState.decreaseNextIndexForFollower(c._1)
-      case _ => {}
+    receiverClients.map(c => {
+      val entryData = getEntryData(c._1, serverState.getCurrentTerm)
+      val entryIndexes = entryData.entries.map(_.index)
+      val maxEntryIndex = if (entryIndexes.nonEmpty) Some(entryIndexes.max) else None
+
+      sendAppendEntryToClient(c._2, entryData, c._1).onComplete {
+        case Success(value)
+          if maxEntryIndex.nonEmpty && value.nonEmpty && value.get.success && serverState.isLeader && value.get.term == serverState.getCurrentTerm => {
+          // increase known replicated log index for follower
+          logState.replicatedToFollower(c._1, maxEntryIndex.get)
+          
+          // commit if replicated enough
+          if (logState.getCommitIndex < maxEntryIndex.get &&
+              logState.logReplicatedToCount(maxEntryIndex.get) > (Configs.ClusterQuorumNumber - 1)) {
+            logState.commit(maxEntryIndex.get)
+          }
+        }
+        case Success(value) if value.nonEmpty && !value.get.success && value.get.term == serverState.getCurrentTerm =>
+          logState.decreaseNextIndexForFollower(c._1)
+        case _ => {}
+      }
     })
 
   def cancelHeartbeats() = {
